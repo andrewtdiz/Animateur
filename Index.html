@@ -261,6 +261,7 @@
         import * as THREE from 'three';
         import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
         import { TransformControls } from 'three/addons/controls/TransformControls.js';
+        import { R11_CORE, buildDefaultPose, getJointName, inferCharacterCount } from './lib/rig-runtime.mjs';
 
         // --- Core Variables ---
         let camera, scene, renderer;
@@ -310,6 +311,8 @@
         const clock = new THREE.Clock();
         const ASSET_FORMAT = 'fast-poser-asset';
         const ASSET_VERSION = 1;
+        const CORE_RIG = R11_CORE;
+        const RELAXED_PREVIEW_CHARACTER_POSE = buildDefaultPose(1, R11_CORE, 'relaxed_preview');
         const REFERENCE_CUBE_MIN_SIZE = 0.1;
         const REFERENCE_CUBE_MAX_SIZE = 40;
         const STORAGE_KEYS = {
@@ -1030,26 +1033,7 @@
         }
 
         function getAssetCharacterCount(asset) {
-            const explicitCount = Number.parseInt(asset?.scene?.characterCount ?? asset?.characterCount, 10);
-            if (Number.isInteger(explicitCount) && explicitCount >= 0) {
-                return explicitCount;
-            }
-
-            if (asset?.type === 'animation' || Array.isArray(asset?.keyframes)) {
-                const maxCharacterIndex = (Array.isArray(asset?.keyframes) ? asset.keyframes : []).reduce((currentMax, frame) => {
-                    return Math.max(currentMax, inferCharacterIndexFromPose(frame?.pose));
-                }, -1);
-                return maxCharacterIndex + 1;
-            }
-
-            return inferCharacterIndexFromPose(asset?.pose) + 1;
-        }
-
-        function inferCharacterIndexFromPose(serializedPose) {
-            return Object.keys(serializedPose || {}).reduce((currentMax, jointName) => {
-                const match = jointName.match(/_(\d+)$/);
-                return match ? Math.max(currentMax, Number.parseInt(match[1], 10)) : currentMax;
-            }, -1);
+            return inferCharacterCount(asset);
         }
 
         function normalizeCharacterColors(values) {
@@ -2531,6 +2515,36 @@
             return group;
         }
 
+        function createRigPreviewJoints(charId, material) {
+            const joints = {};
+
+            CORE_RIG.joints.forEach(joint => {
+                const geometry = CORE_RIG.previewGeometry[joint.baseName];
+                joints[joint.baseName] = createLimb(
+                    geometry.size[0],
+                    geometry.size[1],
+                    geometry.size[2],
+                    geometry.pivotYOffset,
+                    material,
+                    joint.baseName,
+                    charId
+                );
+            });
+
+            CORE_RIG.joints.forEach(joint => {
+                const transform = RELAXED_PREVIEW_CHARACTER_POSE[getJointName(joint.baseName, 0)];
+                const group = joints[joint.baseName];
+                group.position.fromArray(transform.position);
+                group.quaternion.fromArray(transform.quaternion);
+
+                if (joint.parent) {
+                    joints[joint.parent].add(group);
+                }
+            });
+
+            return joints;
+        }
+
         function createCharacter(options = {}) {
             const charId = characters.length;
             const placement = getCharacterPlacement(charId);
@@ -2546,71 +2560,11 @@
                 roughness: 0.4,
                 metalness: 0.1
             });
-
-            // Basic Humanoid Proportions & Rigging
-            // ------------------------------------
-            
-            // 1. Root (Hips)
-            const root = createLimb(1.0, 0.4, 0.6, 0, material, "Hips", charId);
-            root.position.set(x, 2.6, z);
-            
-            // 2. Torso (Spine)
-            const torso = createLimb(0.9, 1.2, 0.5, 0.6, material, "Spine", charId);
-            torso.position.set(0, 0.2, 0); // Attached slightly above hip center
-            root.add(torso);
-            
-            // 3. Head
-            const head = createLimb(0.7, 0.8, 0.7, 0.4, material, "Head", charId);
-            head.position.set(0, 1.2, 0); // Attached to top of torso
-            torso.add(head);
-
-            // 4. Arms
-            const armW = 0.25;
-            
-            // Left Arm
-            const lUpperArm = createLimb(armW, 0.9, armW, -0.45, material, "Left_Upper_Arm", charId);
-            lUpperArm.position.set(0.6, 1.1, 0); // Right side of torso (viewer left)
-            torso.add(lUpperArm);
-            
-            const lLowerArm = createLimb(armW*0.9, 0.9, armW*0.9, -0.45, material, "Left_Lower_Arm", charId);
-            lLowerArm.position.set(0, -0.9, 0); // End of upper arm
-            lUpperArm.add(lLowerArm);
-
-            // Right Arm
-            const rUpperArm = createLimb(armW, 0.9, armW, -0.45, material, "Right_Upper_Arm", charId);
-            rUpperArm.position.set(-0.6, 1.1, 0); // Left side of torso
-            torso.add(rUpperArm);
-            
-            const rLowerArm = createLimb(armW*0.9, 0.9, armW*0.9, -0.45, material, "Right_Lower_Arm", charId);
-            rLowerArm.position.set(0, -0.9, 0);
-            rUpperArm.add(rLowerArm);
-
-            // 5. Legs
-            const legW = 0.35;
-
-            // Left Leg
-            const lUpperLeg = createLimb(legW, 1.1, legW, -0.55, material, "Left_Upper_Leg", charId);
-            lUpperLeg.position.set(0.25, -0.2, 0); // Bottom of hips
-            root.add(lUpperLeg);
-            
-            const lLowerLeg = createLimb(legW*0.9, 1.1, legW*0.9, -0.55, material, "Left_Lower_Leg", charId);
-            lLowerLeg.position.set(0, -1.1, 0);
-            lUpperLeg.add(lLowerLeg);
-
-            // Right Leg
-            const rUpperLeg = createLimb(legW, 1.1, legW, -0.55, material, "Right_Upper_Leg", charId);
-            rUpperLeg.position.set(-0.25, -0.2, 0);
-            root.add(rUpperLeg);
-            
-            const rLowerLeg = createLimb(legW*0.9, 1.1, legW*0.9, -0.55, material, "Right_Lower_Leg", charId);
-            rLowerLeg.position.set(0, -1.1, 0);
-            rUpperLeg.add(rLowerLeg);
-
-            // Default minor pose variation so it doesn't look completely rigid
-            lUpperArm.rotation.z = 0.2;
-            rUpperArm.rotation.z = -0.2;
-            lUpperLeg.rotation.x = 0.05;
-            rUpperLeg.rotation.x = -0.05;
+            const joints = createRigPreviewJoints(charId, material);
+            const root = joints.Hips;
+            root.position.x += x;
+            root.position.z += z;
+            root.userData.joints = joints;
 
             root.userData.characterColor = `#${color.getHexString()}`;
             scene.add(root);

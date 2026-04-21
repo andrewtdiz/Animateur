@@ -323,6 +323,7 @@
         import * as THREE from 'three';
         import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
         import { FilesetResolver, PoseLandmarker } from 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.21-rc.20250105/vision_bundle.mjs';
+        import { R11_CORE, buildDefaultPose, getJointName, getJointNames, getJointParents } from './lib/rig-runtime.mjs';
 
         const ASSET_FORMAT = 'fast-poser-asset';
         const ASSET_VERSION = 1;
@@ -331,6 +332,7 @@
         const MEDIAPIPE_MODEL_PATH = 'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task';
         const ROOT_BASE_POSITION = new THREE.Vector3(0, 2.6, 0);
         const DOWN_AXIS = new THREE.Vector3(0, -1, 0);
+        const CORE_RIG = R11_CORE;
         const DEFAULT_COLORS = ['#5eead4', '#f472b6'];
         const DEFAULT_COLOR = DEFAULT_COLORS[0];
         const MAX_CAPTURE_CHARACTERS = 2;
@@ -358,33 +360,10 @@
             MOVENET: 'movenet',
             MANUAL: 'manual'
         };
-        const BASE_JOINT_ORDER = [
-            'Hips',
-            'Spine',
-            'Head',
-            'Left_Upper_Arm',
-            'Left_Lower_Arm',
-            'Right_Upper_Arm',
-            'Right_Lower_Arm',
-            'Left_Upper_Leg',
-            'Left_Lower_Leg',
-            'Right_Upper_Leg',
-            'Right_Lower_Leg'
-        ];
-        const BASE_JOINT_PARENTS = {
-            Hips: null,
-            Spine: 'Hips',
-            Head: 'Spine',
-            Left_Upper_Arm: 'Spine',
-            Left_Lower_Arm: 'Left_Upper_Arm',
-            Right_Upper_Arm: 'Spine',
-            Right_Lower_Arm: 'Right_Upper_Arm',
-            Left_Upper_Leg: 'Hips',
-            Left_Lower_Leg: 'Left_Upper_Leg',
-            Right_Upper_Leg: 'Hips',
-            Right_Lower_Leg: 'Right_Upper_Leg'
-        };
+        const BASE_JOINT_ORDER = getJointNames(CORE_RIG);
+        const BASE_JOINT_PARENTS = getJointParents(CORE_RIG);
         const BASE_JOINT_SET = new Set(BASE_JOINT_ORDER);
+        const RELAXED_PREVIEW_POSE = buildDefaultPose(1, R11_CORE, 'relaxed_preview');
         const STANDING_LOWER_BODY_JOINTS = [
             'Hips',
             'Left_Upper_Leg',
@@ -686,10 +665,6 @@
             return getPoseBackend() === POSE_BACKENDS.MEDIAPIPE_IMAGE ? 'IMAGE' : 'VIDEO';
         }
 
-        function getJointName(baseName, characterIndex) {
-            return `${baseName}_${characterIndex}`;
-        }
-
         function parseJointName(jointName) {
             const match = String(jointName || '').match(/^(.+)_(\d+)$/);
             if (!match || !BASE_JOINT_SET.has(match[1])) return null;
@@ -755,55 +730,32 @@
                 metalness: 0.08
             });
 
-            const root = createLimb(1.0, 0.4, 0.6, 0, material, 'Hips', characterIndex);
+            const joints = {};
+            CORE_RIG.joints.forEach(joint => {
+                const geometry = CORE_RIG.previewGeometry[joint.baseName];
+                joints[joint.baseName] = createLimb(
+                    geometry.size[0],
+                    geometry.size[1],
+                    geometry.size[2],
+                    geometry.pivotYOffset,
+                    material,
+                    joint.baseName,
+                    characterIndex
+                );
+            });
+
+            CORE_RIG.joints.forEach(joint => {
+                const group = joints[joint.baseName];
+                const transform = RELAXED_PREVIEW_POSE[getJointName(joint.baseName, 0)];
+                group.position.fromArray(transform.position);
+                group.quaternion.fromArray(transform.quaternion);
+                if (joint.parent) {
+                    joints[joint.parent].add(group);
+                }
+            });
+
+            const root = joints.Hips;
             root.position.copy(getCharacterBasePosition(characterIndex, characterCount));
-
-            const spine = createLimb(0.9, 1.2, 0.5, 0.6, material, 'Spine', characterIndex);
-            spine.position.set(0, 0.2, 0);
-            root.add(spine);
-
-            const head = createLimb(0.7, 0.8, 0.7, 0.4, material, 'Head', characterIndex);
-            head.position.set(0, 1.2, 0);
-            spine.add(head);
-
-            const armWidth = 0.25;
-            const leftUpperArm = createLimb(armWidth, 0.9, armWidth, -0.45, material, 'Left_Upper_Arm', characterIndex);
-            leftUpperArm.position.set(0.6, 1.1, 0);
-            spine.add(leftUpperArm);
-
-            const leftLowerArm = createLimb(armWidth * 0.9, 0.9, armWidth * 0.9, -0.45, material, 'Left_Lower_Arm', characterIndex);
-            leftLowerArm.position.set(0, -0.9, 0);
-            leftUpperArm.add(leftLowerArm);
-
-            const rightUpperArm = createLimb(armWidth, 0.9, armWidth, -0.45, material, 'Right_Upper_Arm', characterIndex);
-            rightUpperArm.position.set(-0.6, 1.1, 0);
-            spine.add(rightUpperArm);
-
-            const rightLowerArm = createLimb(armWidth * 0.9, 0.9, armWidth * 0.9, -0.45, material, 'Right_Lower_Arm', characterIndex);
-            rightLowerArm.position.set(0, -0.9, 0);
-            rightUpperArm.add(rightLowerArm);
-
-            const legWidth = 0.35;
-            const leftUpperLeg = createLimb(legWidth, 1.1, legWidth, -0.55, material, 'Left_Upper_Leg', characterIndex);
-            leftUpperLeg.position.set(0.25, -0.2, 0);
-            root.add(leftUpperLeg);
-
-            const leftLowerLeg = createLimb(legWidth * 0.9, 1.1, legWidth * 0.9, -0.55, material, 'Left_Lower_Leg', characterIndex);
-            leftLowerLeg.position.set(0, -1.1, 0);
-            leftUpperLeg.add(leftLowerLeg);
-
-            const rightUpperLeg = createLimb(legWidth, 1.1, legWidth, -0.55, material, 'Right_Upper_Leg', characterIndex);
-            rightUpperLeg.position.set(-0.25, -0.2, 0);
-            root.add(rightUpperLeg);
-
-            const rightLowerLeg = createLimb(legWidth * 0.9, 1.1, legWidth * 0.9, -0.55, material, 'Right_Lower_Leg', characterIndex);
-            rightLowerLeg.position.set(0, -1.1, 0);
-            rightUpperLeg.add(rightLowerLeg);
-
-            leftUpperArm.rotation.z = 0.2;
-            rightUpperArm.rotation.z = -0.2;
-            leftUpperLeg.rotation.x = 0.05;
-            rightUpperLeg.rotation.x = -0.05;
 
             root.userData.characterColor = `#${color.getHexString()}`;
             scene.add(root);

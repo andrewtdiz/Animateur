@@ -2,31 +2,13 @@
 
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { AUTORIG_R18, AUTORIG_UAL_HINTS } from '../lib/rig-runtime.mjs';
 
 const repoRoot = process.cwd();
 const sourceGlbPath = path.join(repoRoot, 'Animations/universal/UAL1_Standard.glb');
 const outputDir = path.join(repoRoot, 'Animations/universal');
 
-const TARGET_RIG = [
-    { baseName: 'Hips', parent: null, position: [0, 2.6, 0], quaternion: [0, 0, 0, 1] },
-    { baseName: 'Spine', parent: 'Hips', position: [0, 0.2, 0], quaternion: [0, 0, 0, 1] },
-    { baseName: 'Neck', parent: 'Spine', position: [0, 1.02, 0], quaternion: [0, 0, 0, 1] },
-    { baseName: 'Head', parent: 'Spine', position: [0, 1.2, 0], quaternion: [0, 0, 0, 1] },
-    { baseName: 'Left_Shoulder', parent: 'Spine', position: [0.42, 1.02, 0], quaternion: [0, 0, 0, 1] },
-    { baseName: 'Left_Upper_Arm', parent: 'Spine', position: [0.6, 1.1, 0], quaternion: [0, 0, 0, 1] },
-    { baseName: 'Left_Lower_Arm', parent: 'Left_Upper_Arm', position: [0, -0.9, 0], quaternion: [0, 0, 0, 1] },
-    { baseName: 'Left_Hand', parent: 'Left_Lower_Arm', position: [0, -0.88, 0.02], quaternion: [0, 0, 0, 1] },
-    { baseName: 'Right_Shoulder', parent: 'Spine', position: [-0.42, 1.02, 0], quaternion: [0, 0, 0, 1] },
-    { baseName: 'Right_Upper_Arm', parent: 'Spine', position: [-0.6, 1.1, 0], quaternion: [0, 0, 0, 1] },
-    { baseName: 'Right_Lower_Arm', parent: 'Right_Upper_Arm', position: [0, -0.9, 0], quaternion: [0, 0, 0, 1] },
-    { baseName: 'Right_Hand', parent: 'Right_Lower_Arm', position: [0, -0.88, 0.02], quaternion: [0, 0, 0, 1] },
-    { baseName: 'Left_Upper_Leg', parent: 'Hips', position: [0.25, -0.2, 0], quaternion: [0, 0, 0, 1] },
-    { baseName: 'Left_Lower_Leg', parent: 'Left_Upper_Leg', position: [0, -1.1, 0], quaternion: [0, 0, 0, 1] },
-    { baseName: 'Left_Foot', parent: 'Left_Lower_Leg', position: [0, -1.05, 0.18], quaternion: [0, 0, 0, 1] },
-    { baseName: 'Right_Upper_Leg', parent: 'Hips', position: [-0.25, -0.2, 0], quaternion: [0, 0, 0, 1] },
-    { baseName: 'Right_Lower_Leg', parent: 'Right_Upper_Leg', position: [0, -1.1, 0], quaternion: [0, 0, 0, 1] },
-    { baseName: 'Right_Foot', parent: 'Right_Lower_Leg', position: [0, -1.05, 0.18], quaternion: [0, 0, 0, 1] }
-];
+const TARGET_RIG = AUTORIG_R18.joints;
 
 const SOURCE_TO_TARGET = {
     Hips: 'pelvis',
@@ -50,37 +32,8 @@ const SOURCE_TO_TARGET = {
 };
 
 const DOWN_AXIS = [0, -1, 0];
-const DIRECTIONAL_TARGETS = {
-    Left_Shoulder: 'Left_Upper_Arm',
-    Left_Upper_Arm: 'Left_Lower_Arm',
-    Left_Lower_Arm: 'Left_Hand',
-    Right_Shoulder: 'Right_Upper_Arm',
-    Right_Upper_Arm: 'Right_Lower_Arm',
-    Right_Lower_Arm: 'Right_Hand',
-    Left_Upper_Leg: 'Left_Lower_Leg',
-    Left_Lower_Leg: 'Left_Foot',
-    Right_Upper_Leg: 'Right_Lower_Leg',
-    Right_Lower_Leg: 'Right_Foot'
-};
-
-const TARGET_GROUND_SEGMENTS = [
-    { start: 'Right_Upper_Leg', end: 'Left_Upper_Leg', radius: 0.62 },
-    { start: 'Hips', end: 'Spine', radius: 0.58 },
-    { start: 'Spine', end: 'Neck', radius: 0.34 },
-    { start: 'Neck', end: 'Head', radius: 0.48 },
-    { start: 'Spine', end: 'Left_Shoulder', radius: 0.34 },
-    { start: 'Left_Shoulder', end: 'Left_Lower_Arm', radius: 0.36 },
-    { start: 'Left_Lower_Arm', end: 'Left_Hand', radius: 0.34 },
-    { start: 'Left_Lower_Arm', end: 'Left_Hand', radius: 0.42 },
-    { start: 'Spine', end: 'Right_Shoulder', radius: 0.34 },
-    { start: 'Right_Shoulder', end: 'Right_Lower_Arm', radius: 0.36 },
-    { start: 'Right_Lower_Arm', end: 'Right_Hand', radius: 0.34 },
-    { start: 'Right_Lower_Arm', end: 'Right_Hand', radius: 0.42 },
-    { start: 'Left_Upper_Leg', end: 'Left_Lower_Leg', radius: 0.4 },
-    { start: 'Left_Lower_Leg', end: 'Left_Foot', radius: 0.36 },
-    { start: 'Right_Upper_Leg', end: 'Right_Lower_Leg', radius: 0.4 },
-    { start: 'Right_Lower_Leg', end: 'Right_Foot', radius: 0.36 }
-];
+const DIRECTIONAL_TARGETS = AUTORIG_UAL_HINTS.directionalTargets;
+const TARGET_GROUND_SEGMENTS = AUTORIG_UAL_HINTS.groundSegments;
 
 const CHARACTER_COLOR = '#5eead4';
 const OUTPUT_PRECISION = 6;
@@ -605,6 +558,34 @@ function sanitizeFileName(name) {
         .replace(/^-+|-+$/g, '') || 'clip';
 }
 
+async function readJsonIfExists(filePath) {
+    try {
+        const raw = await readFile(filePath, 'utf8');
+        return JSON.parse(raw);
+    } catch (error) {
+        if (error?.code === 'ENOENT') {
+            return null;
+        }
+        throw error;
+    }
+}
+
+function withoutTimestamp(value, fieldName) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+        return value;
+    }
+    const clone = { ...value };
+    delete clone[fieldName];
+    return clone;
+}
+
+function preserveTimestamp(nextValue, existingValue, fieldName, fallbackTimestamp) {
+    if (existingValue && JSON.stringify(withoutTimestamp(existingValue, fieldName)) === JSON.stringify(withoutTimestamp(nextValue, fieldName))) {
+        return existingValue[fieldName] || fallbackTimestamp;
+    }
+    return fallbackTimestamp;
+}
+
 function buildTimeList(gltf, bin, animation) {
     const times = new Map();
     animation.samplers.forEach(sampler => {
@@ -791,6 +772,9 @@ async function main() {
     const targetRest = buildTargetTransformsForRest();
 
     await mkdir(outputDir, { recursive: true });
+    const buildTimestamp = new Date().toISOString();
+    const manifestPath = path.join(outputDir, 'manifest.json');
+    const existingManifest = await readJsonIfExists(manifestPath);
 
     const manifest = [];
     for (const animation of gltf.animations) {
@@ -827,6 +811,8 @@ async function main() {
 
         const fileName = `${sanitizeFileName(animation.name)}.animation.json`;
         const filePath = path.join(outputDir, fileName);
+        const existingAsset = await readJsonIfExists(filePath);
+        asset.savedAt = preserveTimestamp(asset, existingAsset, 'savedAt', buildTimestamp);
         await writeFile(filePath, `${JSON.stringify(asset, null, 2)}\n`, 'utf8');
         manifest.push({
             file: fileName,
@@ -836,13 +822,16 @@ async function main() {
         });
     }
 
-    await writeFile(path.join(outputDir, 'manifest.json'), `${JSON.stringify({
+    const nextManifest = {
         source: 'Animations/universal/UAL1_Standard.glb',
-        generatedAt: new Date().toISOString(),
+        generatedAt: buildTimestamp,
         characterCount: 1,
         rig: TARGET_RIG.map(joint => joint.baseName),
         clips: manifest
-    }, null, 2)}\n`, 'utf8');
+    };
+    nextManifest.generatedAt = preserveTimestamp(nextManifest, existingManifest, 'generatedAt', buildTimestamp);
+
+    await writeFile(manifestPath, `${JSON.stringify(nextManifest, null, 2)}\n`, 'utf8');
 
     console.log(`Wrote ${manifest.length} animation files to ${outputDir}`);
 }

@@ -264,6 +264,7 @@
     <script type="module">
         import * as THREE from 'three';
         import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { R11_CORE, buildDefaultPose, getJointName, getJointNames, inferCharacterCount } from './lib/rig-runtime.mjs';
 
         const WORLD_UP = new THREE.Vector3(0, 1, 0);
         const ROOT_HEIGHT = 2.6;
@@ -276,10 +277,9 @@
         const NPC_WALK_SWAY_SCALE = 0.1;
         const IDLE_SWAY_SCALE = 0.03;
         const IDLE_VERTICAL_SCALE = 0.16;
-        const CHARACTER_JOINT_NAMES = [
-            'Hips', 'Spine', 'Head', 'Left_Upper_Arm', 'Left_Lower_Arm', 'Right_Upper_Arm', 'Right_Lower_Arm',
-            'Left_Upper_Leg', 'Left_Lower_Leg', 'Right_Upper_Leg', 'Right_Lower_Leg'
-        ];
+        const CORE_RIG = R11_CORE;
+        const CHARACTER_JOINT_NAMES = getJointNames(CORE_RIG);
+        const RELAXED_PREVIEW_POSE = buildDefaultPose(1, R11_CORE, 'relaxed_preview');
         const ASSET_MANIFEST = [
             { file: 'walking-anim.animation.json', group: 'walk' },
             { file: 'walking-realistic.animation.json', group: 'walk' },
@@ -737,51 +737,29 @@
                 return group;
             }
 
-            const root = createLimb(1.0, 0.4, 0.6, 0, 'Hips');
+            CORE_RIG.joints.forEach(joint => {
+                const geometry = CORE_RIG.previewGeometry[joint.baseName];
+                createLimb(
+                    geometry.size[0],
+                    geometry.size[1],
+                    geometry.size[2],
+                    geometry.pivotYOffset,
+                    joint.baseName
+                );
+            });
+
+            CORE_RIG.joints.forEach(joint => {
+                const group = joints[joint.baseName];
+                const transform = RELAXED_PREVIEW_POSE[getJointName(joint.baseName, 0)];
+                group.position.fromArray(transform.position);
+                group.quaternion.fromArray(transform.quaternion);
+                if (joint.parent) {
+                    joints[joint.parent].add(group);
+                }
+            });
+
+            const root = joints.Hips;
             root.position.copy(options.position);
-
-            const torso = createLimb(0.9, 1.2, 0.5, 0.6, 'Spine');
-            torso.position.set(0, 0.2, 0);
-            root.add(torso);
-
-            const head = createLimb(0.7, 0.8, 0.7, 0.4, 'Head');
-            head.position.set(0, 1.2, 0);
-            torso.add(head);
-
-            const armWidth = 0.25;
-            const leftUpperArm = createLimb(armWidth, 0.9, armWidth, -0.45, 'Left_Upper_Arm');
-            leftUpperArm.position.set(0.6, 1.1, 0);
-            torso.add(leftUpperArm);
-            const leftLowerArm = createLimb(armWidth * 0.9, 0.9, armWidth * 0.9, -0.45, 'Left_Lower_Arm');
-            leftLowerArm.position.set(0, -0.9, 0);
-            leftUpperArm.add(leftLowerArm);
-
-            const rightUpperArm = createLimb(armWidth, 0.9, armWidth, -0.45, 'Right_Upper_Arm');
-            rightUpperArm.position.set(-0.6, 1.1, 0);
-            torso.add(rightUpperArm);
-            const rightLowerArm = createLimb(armWidth * 0.9, 0.9, armWidth * 0.9, -0.45, 'Right_Lower_Arm');
-            rightLowerArm.position.set(0, -0.9, 0);
-            rightUpperArm.add(rightLowerArm);
-
-            const legWidth = 0.35;
-            const leftUpperLeg = createLimb(legWidth, 1.1, legWidth, -0.55, 'Left_Upper_Leg');
-            leftUpperLeg.position.set(0.25, -0.2, 0);
-            root.add(leftUpperLeg);
-            const leftLowerLeg = createLimb(legWidth * 0.9, 1.1, legWidth * 0.9, -0.55, 'Left_Lower_Leg');
-            leftLowerLeg.position.set(0, -1.1, 0);
-            leftUpperLeg.add(leftLowerLeg);
-
-            const rightUpperLeg = createLimb(legWidth, 1.1, legWidth, -0.55, 'Right_Upper_Leg');
-            rightUpperLeg.position.set(-0.25, -0.2, 0);
-            root.add(rightUpperLeg);
-            const rightLowerLeg = createLimb(legWidth * 0.9, 1.1, legWidth * 0.9, -0.55, 'Right_Lower_Leg');
-            rightLowerLeg.position.set(0, -1.1, 0);
-            rightUpperLeg.add(rightLowerLeg);
-
-            leftUpperArm.rotation.z = 0.2;
-            rightUpperArm.rotation.z = -0.2;
-            leftUpperLeg.rotation.x = 0.05;
-            rightUpperLeg.rotation.x = -0.05;
 
             root.userData.joints = joints;
             root.userData.characterName = options.name;
@@ -1266,32 +1244,30 @@
             return actor.locomotionAsset;
         }
 
-        function applyNeutralPose(actor) {
+        function applyRigPoseToActor(actor, pose) {
             const joints = actor.root.userData.joints;
             const anchorQuat = new THREE.Quaternion().setFromAxisAngle(WORLD_UP, actor.facing);
 
-            joints.Hips.position.copy(actor.position);
-            joints.Hips.quaternion.copy(anchorQuat);
-            joints.Spine.position.set(0, 0.2, 0);
-            joints.Spine.quaternion.identity();
-            joints.Head.position.set(0, 1.2, 0);
-            joints.Head.quaternion.identity();
-            joints.Left_Upper_Arm.position.set(0.6, 1.1, 0);
-            joints.Left_Upper_Arm.quaternion.setFromAxisAngle(new THREE.Vector3(0, 0, 1), 0.2);
-            joints.Left_Lower_Arm.position.set(0, -0.9, 0);
-            joints.Left_Lower_Arm.quaternion.identity();
-            joints.Right_Upper_Arm.position.set(-0.6, 1.1, 0);
-            joints.Right_Upper_Arm.quaternion.setFromAxisAngle(new THREE.Vector3(0, 0, 1), -0.2);
-            joints.Right_Lower_Arm.position.set(0, -0.9, 0);
-            joints.Right_Lower_Arm.quaternion.identity();
-            joints.Left_Upper_Leg.position.set(0.25, -0.2, 0);
-            joints.Left_Upper_Leg.quaternion.setFromAxisAngle(new THREE.Vector3(1, 0, 0), 0.05);
-            joints.Left_Lower_Leg.position.set(0, -1.1, 0);
-            joints.Left_Lower_Leg.quaternion.identity();
-            joints.Right_Upper_Leg.position.set(-0.25, -0.2, 0);
-            joints.Right_Upper_Leg.quaternion.setFromAxisAngle(new THREE.Vector3(1, 0, 0), -0.05);
-            joints.Right_Lower_Leg.position.set(0, -1.1, 0);
-            joints.Right_Lower_Leg.quaternion.identity();
+            CHARACTER_JOINT_NAMES.forEach(baseName => {
+                const transform = pose[getJointName(baseName, 0)];
+                const joint = joints[baseName];
+                if (!joint || !transform) return;
+
+                if (baseName === 'Hips') {
+                    joint.position.copy(actor.position);
+                    joint.quaternion.copy(anchorQuat)
+                        .multiply(tempQuatA.fromArray(transform.quaternion))
+                        .normalize();
+                    return;
+                }
+
+                joint.position.fromArray(transform.position);
+                joint.quaternion.fromArray(transform.quaternion);
+            });
+        }
+
+        function applyNeutralPose(actor) {
+            applyRigPoseToActor(actor, RELAXED_PREVIEW_POSE);
         }
         function applyAssetFrameToActor(actor, asset, time, sourceIndex, options = {}) {
             if (!asset || asset.keyframes.length === 0) {
@@ -1427,23 +1403,7 @@
         }
 
         function getAssetCharacterCount(asset) {
-            const explicitCount = Number.parseInt(asset?.scene?.characterCount ?? asset?.characterCount, 10);
-            if (Number.isInteger(explicitCount) && explicitCount >= 0) {
-                return explicitCount;
-            }
-
-            const maxCharacterIndex = (Array.isArray(asset?.keyframes) ? asset.keyframes : []).reduce((currentMax, frame) => {
-                return Math.max(currentMax, inferCharacterIndexFromPose(frame?.pose));
-            }, -1);
-
-            return maxCharacterIndex + 1;
-        }
-
-        function inferCharacterIndexFromPose(serializedPose) {
-            return Object.keys(serializedPose || {}).reduce((currentMax, jointName) => {
-                const match = jointName.match(/_(\d+)$/);
-                return match ? Math.max(currentMax, Number.parseInt(match[1], 10)) : currentMax;
-            }, -1);
+            return inferCharacterCount(asset);
         }
 
         function deserializeKeyframes(serializedFrames) {

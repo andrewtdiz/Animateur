@@ -5,20 +5,6 @@ description: Use Animateur, the local browser-based 3D posing and animation tool
 
 # Animateur
 
-## Location
-
-The Animateur project lives at:
-
-```text
-C:\Users\canva\Desktop\Animateur
-```
-
-If running from WSL, the same folder is usually:
-
-```text
-/mnt/c/Users/canva/Desktop/Animateur
-```
-
 Before acting, verify the path exists. If neither path exists, ask the user for the Animateur folder path.
 
 ## What This Software Is
@@ -91,6 +77,8 @@ Preserve the shared JSON contract. Compatible assets use:
 }
 ```
 
+For the machine-readable reference, see `animateur_rig/fast-poser-asset.schema.json`.
+
 Pose assets include:
 
 - `name`
@@ -132,11 +120,29 @@ When asked to open or run Animateur:
 
 When asked to create or edit an animation asset:
 
-1. Inspect existing files in `Animations/` for examples.
-2. Produce `.animation.json` using `format: "fast-poser-asset"`, `version: 1`, and `type: "animation"`.
-3. Use complete poses for required joints when possible.
-4. Keep `scene.characterCount` and joint suffixes aligned.
+1. Prefer the Python authoring SDK in `animateur_rig` over hand-assembling raw dicts.
+2. Use `new_pose()` / `new_animation()` plus `Pose`, `Keyframe`, and `ArcaneSummonEffect` when generating assets programmatically.
+3. Let `Pose` helpers handle rig terms and character indices; do not manually construct `Hips_0`-style keys unless the task specifically needs raw JSON editing.
+4. Serialize with `.to_dict()` or `.to_json()` so the top-level `format`, `version`, `type`, `scene`, `effects`, and `keyframes` contract stays correct.
 5. Validate by importing into `Index.html`; if runtime behavior matters, also test `Playground.html` or `AutoRigScene.html`.
+
+Programmatic example:
+
+```python
+from animateur_rig import Pose, new_animation
+
+clip = new_animation("wave", rig="r11_core", character_count=1)
+pose = Pose(rig_id="r11_core", character_count=1)
+pose.set_rotation("Left_Upper_Arm", axis=(0, 0, 1), angle_radians=0.25)
+clip.add_keyframe(0.0, pose)
+clip.hold(0.2)
+
+target = Pose(rig_id="r11_core", character_count=1)
+target.set_rotation("Left_Upper_Arm", axis=(0, 0, 1), angle_radians=0.65)
+clip.transition(target, 0.4)
+
+animation_json = clip.to_json()
+```
 
 When changing Fast Poser (`Index.html`):
 
@@ -178,3 +184,4 @@ For visual or interaction changes, use a real browser and check the JavaScript c
 ## Boundaries
 
 Do not introduce a backend, framework migration, package install, build step, persistent project-file format, or cloud dependency unless the user explicitly asks. Prefer small, page-local edits that preserve the shared JSON format and keep all four tools interoperable.
+- For standalone Python rotation math in scripts, prefer `scipy.spatial.transform.Rotation` for composition, inversion, and vector rotation. Keep quaternion values scalar-last `(x, y, z, w)`, and do not add local `q_mul`, `q_conj`, or `q_rotate` helpers unless you are intentionally building a reusable math module.

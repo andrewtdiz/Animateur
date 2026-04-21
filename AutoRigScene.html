@@ -548,6 +548,7 @@
         import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
         import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
         import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+        import { AUTORIG_AUTO_SKIN_SEGMENTS, AUTORIG_R18, AUTORIG_SEGMENTS, getJointName, inferCharacterCount as inferRuntimeCharacterCount, normalizeKeyframes } from './lib/rig-runtime.mjs';
 
         const STORAGE_KEY = 'fast-poser:animation-library';
         const GENERATED_MODEL_ID = 'generated:cubes';
@@ -574,67 +575,11 @@
         const DEFAULT_COLORS = ['#77f7ff', '#ffcc78', '#9bf0a8', '#ff9eb0', '#b4a3ff', '#f7f2a1'];
         const MODEL_TARGET_HEIGHT = 4.18;
         const MODEL_FOOT_Y = 0.12;
-        const JOINT_LAYOUT = [
-            { baseName: 'Hips', parent: null, position: [0, 2.6, 0], quaternion: [0, 0, 0, 1] },
-            { baseName: 'Spine', parent: 'Hips', position: [0, 0.2, 0], quaternion: [0, 0, 0, 1] },
-            { baseName: 'Neck', parent: 'Spine', position: [0, 1.02, 0], quaternion: [0, 0, 0, 1] },
-            { baseName: 'Head', parent: 'Spine', position: [0, 1.2, 0], quaternion: [0, 0, 0, 1] },
-            { baseName: 'Left_Shoulder', parent: 'Spine', position: [0.42, 1.02, 0], quaternion: [0, 0, 0, 1] },
-            { baseName: 'Left_Upper_Arm', parent: 'Spine', position: [0.6, 1.1, 0], quaternion: [0, 0, 0, 1] },
-            { baseName: 'Left_Lower_Arm', parent: 'Left_Upper_Arm', position: [0, -0.9, 0], quaternion: [0, 0, 0, 1] },
-            { baseName: 'Left_Hand', parent: 'Left_Lower_Arm', position: [0, -0.88, 0.02], quaternion: [0, 0, 0, 1] },
-            { baseName: 'Right_Shoulder', parent: 'Spine', position: [-0.42, 1.02, 0], quaternion: [0, 0, 0, 1] },
-            { baseName: 'Right_Upper_Arm', parent: 'Spine', position: [-0.6, 1.1, 0], quaternion: [0, 0, 0, 1] },
-            { baseName: 'Right_Lower_Arm', parent: 'Right_Upper_Arm', position: [0, -0.9, 0], quaternion: [0, 0, 0, 1] },
-            { baseName: 'Right_Hand', parent: 'Right_Lower_Arm', position: [0, -0.88, 0.02], quaternion: [0, 0, 0, 1] },
-            { baseName: 'Left_Upper_Leg', parent: 'Hips', position: [0.25, -0.2, 0], quaternion: [0, 0, 0, 1] },
-            { baseName: 'Left_Lower_Leg', parent: 'Left_Upper_Leg', position: [0, -1.1, 0], quaternion: [0, 0, 0, 1] },
-            { baseName: 'Left_Foot', parent: 'Left_Lower_Leg', position: [0, -1.05, 0.18], quaternion: [0, 0, 0, 1] },
-            { baseName: 'Right_Upper_Leg', parent: 'Hips', position: [-0.25, -0.2, 0], quaternion: [0, 0, 0, 1] },
-            { baseName: 'Right_Lower_Leg', parent: 'Right_Upper_Leg', position: [0, -1.1, 0], quaternion: [0, 0, 0, 1] },
-            { baseName: 'Right_Foot', parent: 'Right_Lower_Leg', position: [0, -1.05, 0.18], quaternion: [0, 0, 0, 1] }
-        ];
+        const JOINT_LAYOUT = AUTORIG_R18.joints;
         const JOINT_COUNT = JOINT_LAYOUT.length;
-        const SEGMENT_LAYOUT = [
-            { bone: 'Hips', parent: null, child: null, size: [1.0, 0.42, 0.6], anchor: 'center', length: 0.42, divisions: 1, blend: 0 },
-            { bone: 'Spine', parent: 'Hips', child: 'Head', size: [0.9, 1.2, 0.5], anchor: 'positive', length: 1.2, divisions: 6, blend: 0.24 },
-            { bone: 'Neck', parent: 'Spine', child: 'Head', size: [0.34, 0.3, 0.34], anchor: 'positive', length: 0.3, divisions: 2, blend: 0.2 },
-            { bone: 'Head', parent: 'Spine', child: null, size: [0.7, 0.8, 0.7], anchor: 'positive', length: 0.8, divisions: 4, blend: 0.22 },
-            { bone: 'Left_Shoulder', parent: 'Spine', child: 'Left_Upper_Arm', size: [0.34, 0.24, 0.32], anchor: 'center', length: 0.24, divisions: 1, blend: 0 },
-            { bone: 'Left_Upper_Arm', parent: 'Spine', child: 'Left_Lower_Arm', size: [0.25, 0.9, 0.25], anchor: 'negative', length: 0.9, divisions: 6, blend: 0.26 },
-            { bone: 'Left_Lower_Arm', parent: 'Left_Upper_Arm', child: 'Left_Hand', size: [0.22, 0.9, 0.22], anchor: 'negative', length: 0.9, divisions: 6, blend: 0.24 },
-            { bone: 'Left_Hand', parent: 'Left_Lower_Arm', child: null, size: [0.26, 0.22, 0.28], anchor: 'negative', length: 0.22, divisions: 1, blend: 0.08 },
-            { bone: 'Right_Shoulder', parent: 'Spine', child: 'Right_Upper_Arm', size: [0.34, 0.24, 0.32], anchor: 'center', length: 0.24, divisions: 1, blend: 0 },
-            { bone: 'Right_Upper_Arm', parent: 'Spine', child: 'Right_Lower_Arm', size: [0.25, 0.9, 0.25], anchor: 'negative', length: 0.9, divisions: 6, blend: 0.26 },
-            { bone: 'Right_Lower_Arm', parent: 'Right_Upper_Arm', child: 'Right_Hand', size: [0.22, 0.9, 0.22], anchor: 'negative', length: 0.9, divisions: 6, blend: 0.24 },
-            { bone: 'Right_Hand', parent: 'Right_Lower_Arm', child: null, size: [0.26, 0.22, 0.28], anchor: 'negative', length: 0.22, divisions: 1, blend: 0.08 },
-            { bone: 'Left_Upper_Leg', parent: 'Hips', child: 'Left_Lower_Leg', size: [0.35, 1.1, 0.35], anchor: 'negative', length: 1.1, divisions: 7, blend: 0.24 },
-            { bone: 'Left_Lower_Leg', parent: 'Left_Upper_Leg', child: 'Left_Foot', size: [0.31, 1.1, 0.31], anchor: 'negative', length: 1.1, divisions: 7, blend: 0.24 },
-            { bone: 'Left_Foot', parent: 'Left_Lower_Leg', child: null, size: [0.32, 0.22, 0.54], anchor: 'center', length: 0.22, divisions: 1, blend: 0 },
-            { bone: 'Right_Upper_Leg', parent: 'Hips', child: 'Right_Lower_Leg', size: [0.35, 1.1, 0.35], anchor: 'negative', length: 1.1, divisions: 7, blend: 0.24 },
-            { bone: 'Right_Lower_Leg', parent: 'Right_Upper_Leg', child: 'Right_Foot', size: [0.31, 1.1, 0.31], anchor: 'negative', length: 1.1, divisions: 7, blend: 0.24 },
-            { bone: 'Right_Foot', parent: 'Right_Lower_Leg', child: null, size: [0.32, 0.22, 0.54], anchor: 'center', length: 0.22, divisions: 1, blend: 0 }
-        ];
-        const AUTO_SKIN_SEGMENTS = [
-            { bone: 'Hips', a: [-0.46, 2.48, 0], b: [0.46, 2.48, 0], radius: 0.66, region: 'core' },
-            { bone: 'Spine', a: [0, 2.68, 0], b: [0, 3.52, 0], radius: 0.62, region: 'core' },
-            { bone: 'Neck', a: [0, 3.48, 0], b: [0, 3.78, 0], radius: 0.34, region: 'neck' },
-            { bone: 'Head', a: [0, 3.76, 0], b: [0, 4.34, 0], radius: 0.48, region: 'head' },
-            { bone: 'Left_Shoulder', a: [0.26, 3.58, 0], b: [0.72, 3.66, 0], radius: 0.34, region: 'leftShoulder' },
-            { bone: 'Left_Upper_Arm', a: [0.66, 3.58, 0], b: [0.7, 2.94, 0], radius: 0.36, region: 'leftArm' },
-            { bone: 'Left_Lower_Arm', a: [0.7, 2.94, 0], b: [0.58, 2.22, 0.03], radius: 0.34, region: 'leftArm' },
-            { bone: 'Left_Hand', a: [0.58, 2.26, 0.03], b: [0.5, 2.02, 0.08], radius: 0.42, region: 'leftHand' },
-            { bone: 'Right_Shoulder', a: [-0.26, 3.58, 0], b: [-0.72, 3.66, 0], radius: 0.34, region: 'rightShoulder' },
-            { bone: 'Right_Upper_Arm', a: [-0.66, 3.58, 0], b: [-0.7, 2.94, 0], radius: 0.36, region: 'rightArm' },
-            { bone: 'Right_Lower_Arm', a: [-0.7, 2.94, 0], b: [-0.58, 2.22, 0.03], radius: 0.34, region: 'rightArm' },
-            { bone: 'Right_Hand', a: [-0.58, 2.26, 0.03], b: [-0.5, 2.02, 0.08], radius: 0.42, region: 'rightHand' },
-            { bone: 'Left_Upper_Leg', a: [0.28, 2.38, 0], b: [0.3, 1.34, 0], radius: 0.4, region: 'leftLeg' },
-            { bone: 'Left_Lower_Leg', a: [0.3, 1.34, 0], b: [0.26, 0.3, 0.02], radius: 0.34, region: 'leftLeg' },
-            { bone: 'Left_Foot', a: [0.26, 0.28, 0.02], b: [0.26, 0.08, 0.34], radius: 0.36, region: 'leftFoot' },
-            { bone: 'Right_Upper_Leg', a: [-0.28, 2.38, 0], b: [-0.3, 1.34, 0], radius: 0.4, region: 'rightLeg' },
-            { bone: 'Right_Lower_Leg', a: [-0.3, 1.34, 0], b: [-0.26, 0.3, 0.02], radius: 0.34, region: 'rightLeg' },
-            { bone: 'Right_Foot', a: [-0.26, 0.28, 0.02], b: [-0.26, 0.08, 0.34], radius: 0.36, region: 'rightFoot' }
-        ].map(segment => ({
+        const BONE_INDEX_BY_NAME = new Map(JOINT_LAYOUT.map((joint, index) => [joint.baseName, index]));
+        const SEGMENT_LAYOUT = AUTORIG_SEGMENTS;
+        const AUTO_SKIN_SEGMENTS = AUTORIG_AUTO_SKIN_SEGMENTS.map(segment => ({
             ...segment,
             a: new THREE.Vector3(...segment.a),
             b: new THREE.Vector3(...segment.b)
@@ -1294,7 +1239,7 @@
                 throw new Error('This animation does not contain any keyframes.');
             }
 
-            const characterCount = inferCharacterCount(data);
+            const characterCount = inferRuntimeCharacterCount(data);
             const playbackSpeed = Number.isFinite(data.playbackSpeed) && data.playbackSpeed > 0 ? data.playbackSpeed : 1;
             const colors = Array.isArray(data?.scene?.characterColors) ? data.scene.characterColors.slice(0, characterCount) : [];
 
@@ -1302,34 +1247,14 @@
                 colors.push(DEFAULT_COLORS[colors.length % DEFAULT_COLORS.length]);
             }
 
-            const defaultPose = createDefaultPose(characterCount);
-            const sortedFrames = data.keyframes
+            const normalizedInputFrames = data.keyframes
                 .map(frame => ({
                     time: Math.max(0, Number.parseFloat(frame?.time) || 0),
                     pose: frame?.pose && typeof frame.pose === 'object' ? frame.pose : {}
-                }))
-                .sort((a, b) => a.time - b.time);
-
-            const normalizedFrames = [];
-            const rollingPose = clonePose(defaultPose);
-
-            sortedFrames.forEach(frame => {
-                const normalizedPose = {};
-
-                for (let characterIndex = 0; characterIndex < characterCount; characterIndex += 1) {
-                    JOINT_LAYOUT.forEach(joint => {
-                        const jointName = `${joint.baseName}_${characterIndex}`;
-                        const sourceJoint = frame.pose[jointName];
-                        const fallbackJoint = rollingPose[jointName];
-                        normalizedPose[jointName] = normalizeJointState(sourceJoint, fallbackJoint);
-                        rollingPose[jointName] = cloneJointState(normalizedPose[jointName]);
-                    });
-                }
-
-                normalizedFrames.push({
-                    time: frame.time,
-                    pose: normalizedPose
-                });
+                }));
+            const normalizedFrames = normalizeKeyframes(normalizedInputFrames, {
+                rig: AUTORIG_R18,
+                characterCount
             });
 
             if (normalizedFrames.length === 1) {
@@ -1348,59 +1273,6 @@
                     characterColors: colors
                 },
                 ignoredEffects: !!data.effects
-            };
-        }
-
-        function inferCharacterCount(data) {
-            const explicitCount = Number.parseInt(data?.scene?.characterCount, 10);
-            if (Number.isFinite(explicitCount) && explicitCount > 0) {
-                return explicitCount;
-            }
-
-            let maxIndex = 0;
-            data.keyframes.forEach(frame => {
-                Object.keys(frame?.pose || {}).forEach(jointName => {
-                    const match = jointName.match(/_(\d+)$/);
-                    if (match) {
-                        maxIndex = Math.max(maxIndex, Number.parseInt(match[1], 10) || 0);
-                    }
-                });
-            });
-            return maxIndex + 1;
-        }
-
-        function createDefaultPose(characterCount) {
-            const pose = {};
-            for (let characterIndex = 0; characterIndex < characterCount; characterIndex += 1) {
-                JOINT_LAYOUT.forEach(joint => {
-                    pose[`${joint.baseName}_${characterIndex}`] = {
-                        position: joint.position.slice(),
-                        quaternion: joint.quaternion.slice()
-                    };
-                });
-            }
-            return pose;
-        }
-
-        function normalizeJointState(sourceJoint, fallbackJoint) {
-            const position = Array.isArray(sourceJoint?.position) && sourceJoint.position.length === 3
-                ? sourceJoint.position.map(value => Number(value) || 0)
-                : fallbackJoint.position.slice();
-
-            const quaternion = Array.isArray(sourceJoint?.quaternion) && sourceJoint.quaternion.length === 4
-                ? sourceJoint.quaternion.map(value => Number(value) || 0)
-                : fallbackJoint.quaternion.slice();
-
-            const quat = new THREE.Quaternion(quaternion[0], quaternion[1], quaternion[2], quaternion[3]);
-            if (quat.lengthSq() === 0) {
-                quat.identity();
-            } else {
-                quat.normalize();
-            }
-
-            return {
-                position,
-                quaternion: [quat.x, quat.y, quat.z, quat.w]
             };
         }
 
@@ -1840,34 +1712,13 @@
         }
 
         function createRestSkinSegments(absolutePose) {
-            const makeSegment = (bone, a, b, radius, region) => ({
-                bone,
-                a: absolutePose[a].clone(),
-                b: absolutePose[b].clone(),
-                radius,
-                region
-            });
-
-            return [
-                makeSegment('Hips', 'Right_Upper_Leg', 'Left_Upper_Leg', 0.62, 'core'),
-                makeSegment('Spine', 'Hips', 'Spine', 0.58, 'core'),
-                makeSegment('Neck', 'Spine', 'Neck', 0.34, 'neck'),
-                makeSegment('Head', 'Neck', 'Head', 0.48, 'head'),
-                makeSegment('Left_Shoulder', 'Spine', 'Left_Shoulder', 0.34, 'leftShoulder'),
-                makeSegment('Left_Upper_Arm', 'Left_Shoulder', 'Left_Lower_Arm', 0.36, 'leftArm'),
-                makeSegment('Left_Lower_Arm', 'Left_Lower_Arm', 'Left_Hand', 0.34, 'leftArm'),
-                makeSegment('Left_Hand', 'Left_Lower_Arm', 'Left_Hand', 0.42, 'leftHand'),
-                makeSegment('Right_Shoulder', 'Spine', 'Right_Shoulder', 0.34, 'rightShoulder'),
-                makeSegment('Right_Upper_Arm', 'Right_Shoulder', 'Right_Lower_Arm', 0.36, 'rightArm'),
-                makeSegment('Right_Lower_Arm', 'Right_Lower_Arm', 'Right_Hand', 0.34, 'rightArm'),
-                makeSegment('Right_Hand', 'Right_Lower_Arm', 'Right_Hand', 0.42, 'rightHand'),
-                makeSegment('Left_Upper_Leg', 'Left_Upper_Leg', 'Left_Lower_Leg', 0.4, 'leftLeg'),
-                makeSegment('Left_Lower_Leg', 'Left_Lower_Leg', 'Left_Foot', 0.34, 'leftLeg'),
-                makeSegment('Left_Foot', 'Left_Lower_Leg', 'Left_Foot', 0.36, 'leftFoot'),
-                makeSegment('Right_Upper_Leg', 'Right_Upper_Leg', 'Right_Lower_Leg', 0.4, 'rightLeg'),
-                makeSegment('Right_Lower_Leg', 'Right_Lower_Leg', 'Right_Foot', 0.34, 'rightLeg'),
-                makeSegment('Right_Foot', 'Right_Lower_Leg', 'Right_Foot', 0.36, 'rightFoot')
-            ];
+            return AUTORIG_AUTO_SKIN_SEGMENTS.map(segment => ({
+                bone: segment.bone,
+                a: absolutePose[segment.start].clone(),
+                b: absolutePose[segment.end].clone(),
+                radius: segment.radius,
+                region: segment.region
+            }));
         }
 
         function applyAutoSkinWeights(geometry, skinSegments = AUTO_SKIN_SEGMENTS) {
@@ -2051,13 +1902,13 @@
             JOINT_LAYOUT.forEach(joint => {
                 const bone = new THREE.Bone();
                 const restJoint = restPose?.[joint.baseName];
-                bone.name = `${joint.baseName}_${characterIndex}`;
+                bone.name = getJointName(joint.baseName, characterIndex);
                 bone.position.fromArray(restJoint?.position || joint.position);
                 bone.quaternion.fromArray(restJoint?.quaternion || joint.quaternion);
                 bonesByName.set(bone.name, bone);
 
                 if (joint.parent) {
-                    bonesByName.get(`${joint.parent}_${characterIndex}`).add(bone);
+                    bonesByName.get(getJointName(joint.parent, characterIndex)).add(bone);
                 } else {
                     rootBone = bone;
                 }
@@ -2118,7 +1969,7 @@
         }
 
         function getBoneIndex(baseName) {
-            return JOINT_LAYOUT.findIndex(joint => joint.baseName === baseName);
+            return BONE_INDEX_BY_NAME.get(baseName) ?? -1;
         }
 
         function computeSegmentInfluence(localY, segment, currentIndex, parentIndex, childIndex) {
@@ -2166,7 +2017,7 @@
             for (let characterIndex = 0; characterIndex < asset.scene.characterCount; characterIndex += 1) {
                 const restPose = characters[characterIndex]?.restPose || null;
                 JOINT_LAYOUT.forEach(joint => {
-                    const jointName = `${joint.baseName}_${characterIndex}`;
+                    const jointName = getJointName(joint.baseName, characterIndex);
                     const positions = [];
                     const quaternions = [];
                     const restJoint = restPose?.[joint.baseName];

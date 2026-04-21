@@ -333,6 +333,8 @@ The `Animations/` folder is effectively a starter pack for trying the project.
 
 Fast Poser and Motion Ripper share a plain JSON asset format, and the animation assets are also consumed by Playground and Auto Rig Scene.
 
+For a machine-readable reference, see [animateur_rig/fast-poser-asset.schema.json](</home/andy/Documents/Animateur/animateur_rig/fast-poser-asset.schema.json>).
+
 ### Pose Asset Shape
 
 Exported pose files look like this in principle:
